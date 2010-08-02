@@ -4,7 +4,11 @@
 
 Simply put, this generates statistics based on recent activities from a Teambox project. 
 
-## How do i use it:
+## What does it look like?
+
+<img src="http://blog.teambox.com/wp-content/uploads/2010/08/stats-generator1.jpg"></img>
+
+## How do i use it?
 
 First make sure you have the required gems, i.e.:
 
