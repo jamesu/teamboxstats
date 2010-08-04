@@ -252,25 +252,27 @@ BASE_TEMPLATE = <<EOT
     %h2= "Most active times"
     %div.graph
       %img{:src => 'hours.png'}/
-    %h2= "Most active nicks"
+    %h2= "Most active users"
     %table
       %tr
         %th
-        %th.tdtop= "Nick"
+        %th.tdtop= "User"
         %th.tdtop= "Number of activities"
         %th.tdtop= "When?"
         %th.tdtop= "Random quote"
       - @sorted_nick_activity[0..25].each_index do |idx|
-        - data = @reports.maps[:users][@sorted_nick_activity[idx]]
+        - login = @sorted_nick_activity[idx]
+        - data = @reports.maps[:users][login]
         %tr
           %th.rankc= idx
           %td.user
-            %img{:src => @reports.maps[:user_comments][@sorted_nick_activity[idx]][0].data['user']['avatar_url']}/
+            %img{:src => @reports.maps[:users][@sorted_nick_activity[idx]][0].data['user']['avatar_url']}/
             %strong= @sorted_nick_activity[idx]
           %td= data.length
           %td
           %td
-            %div.example= @reports.maps[:user_comments][@sorted_nick_activity[idx]][rand(@reports.maps[:user_comments][@sorted_nick_activity[idx]].length-1)].body
+            - if @reports.maps[:user_comments][login]
+              %div.example= @reports.maps[:user_comments][login][rand(@reports.maps[:user_comments][login].length-1)].body
     - if @sorted_nick_activity.length > 25 # runners up
       %h3.title= "These didn't make it to the top:"
       = render_runners_up(@sorted_nick_activity[25...55])
@@ -316,64 +318,67 @@ BASE_TEMPLATE = <<EOT
             %p= "<strong>\#{@top_sad_smiley[0]}</strong> seems to be sad at the moment: \#{'%.1f' % @top_sad_smiley[1]}% lines contained sad faces. :("
             - unless @next_sad_smiley[0].nil?
               %p= "<strong>\#{@next_sad_smiley[0]}</strong> is also a sad person, crying \#{'%.1f' % @next_sad_smiley[1]}% of the time."
-    %h2= "Most used words"
-    %table
-      %tr
-        %th
-        %th.tdtop= "Word"
-        %th.tdtop= "Number of uses"
-        %th.tdtop= "Last Used By"
-      - @sorted_words[0...10].each_index do |idx|
-        - entries = @reports.maps[:words][@sorted_words[idx]]
+    - unless @sorted_words.empty?
+      %h2= "Most used words"
+      %table
         %tr
-          %td.rankc= idx+1
-          %td= @sorted_words[idx]
-          %td= entries.length
-          %td= entries[-1].user
-    %h2= "Most referenced user"
-    %table
-      %tr
-        %th
-        %th.tdtop= "User"
-        %th.tdtop= "Number of uses"
-        %th.tdtop= "Last Used by"
-      - @sorted_refs[0...5].each_index do |idx|
-        - entries = @reports.maps[:refs][@sorted_refs[idx]]
-        %tr
-          %td.rankc= idx+1
-          %td= @sorted_refs[idx]
-          %td= entries.length
-          %td= entries[-1].user
-    %h2= "Most referenced URLs"
-    %table
-      %tr
-        %th
-        %th.tdtop= "URL"
-        %th.tdtop= "Number of uses"
-        %th.tdtop= "Last Used by"
-        - @sorted_urls[0...5].each_index do |idx|
-          - entries = @reports.maps[:urls][@sorted_urls[idx]]
+          %th
+          %th.tdtop= "Word"
+          %th.tdtop= "Number of uses"
+          %th.tdtop= "Last Used By"
+        - @sorted_words[0...10].each_index do |idx|
+          - entries = @reports.maps[:words][@sorted_words[idx]]
           %tr
             %td.rankc= idx+1
-            %td= @sorted_urls[idx]
+            %td= @sorted_words[idx]
             %td= entries.length
             %td= entries[-1].user
+    - unless @sorted_refs.empty?
+      %h2= "Most referenced user"
+      %table
+        %tr
+          %th
+          %th.tdtop= "User"
+          %th.tdtop= "Number of uses"
+          %th.tdtop= "Last Used by"
+        - @sorted_refs[0...5].each_index do |idx|
+          - entries = @reports.maps[:refs][@sorted_refs[idx]]
+          %tr
+            %td.rankc= idx+1
+            %td= @sorted_refs[idx]
+            %td= entries.length
+            %td= entries[-1].user
+    - unless @sorted_urls.empty?
+      %h2= "Most referenced URLs"
+      %table
+        %tr
+          %th
+          %th.tdtop= "URL"
+          %th.tdtop= "Number of uses"
+          %th.tdtop= "Last Used by"
+          - @sorted_urls[0...5].each_index do |idx|
+            - entries = @reports.maps[:urls][@sorted_urls[idx]]
+            %tr
+              %td.rankc= idx+1
+              %td= @sorted_urls[idx]
+              %td= entries.length
+              %td= entries[-1].user
     %h2= "Other interesting numbers"
     %table.interest
       - if @sorted_conversations.length > 0
         %tr
           %td
             - entry = @reports.maps[:conversations][@sorted_conversations[0]]
-            %p= "<strong>\#{@conversations[@sorted_conversations[0]]['name']}</strong> is the talk of the project, containing \#{entry.length} comments."
+            %p= "<strong>\#{resolve_conversation(@sorted_conversations[0])['name']}</strong> is the talk of the project, containing \#{entry.length} comments."
             - if @sorted_conversations.length > 1
               - entry = @reports.maps[:conversations][@sorted_conversations[1]]
-              %p= "The runner up, <strong>\#{@conversations[@sorted_conversations[1]]['name']}</strong> contains \#{entry.length} comments."
+              %p= "The runner up, <strong>\#{resolve_conversation(@sorted_conversations[1])['name']}</strong> contains \#{entry.length} comments."
       - unless @top_task_change[0].nil?
         %tr
           %td
-            %p= "<strong>\#{@tasks[@top_task_change[0]]['name']}</strong> is a bit of a hot potato. It's changed hands \#{@top_task_change[1]} times."
+            %p= "<strong>\#{resolve_task(@top_task_change[0])['name']}</strong> is a bit of a hot potato. It's changed hands \#{@top_task_change[1]} times."
             - unless @next_task_change[0].nil?
-              %p= "<strong>\#{@tasks[@next_task_change[0]]['name']}</strong> is also reasonably warm, changing hands \#{@next_task_change[1]} times."
+              %p= "<strong>\#{resolve_task(@next_task_change[0])['name']}</strong> is also reasonably warm, changing hands \#{@next_task_change[1]} times."
       - unless @top_task_create[0].nil?
         %tr
           %td
@@ -402,6 +407,22 @@ EOT
     @tasks = {}
   end
   
+  def resolve_task(id)
+    if @tasks[id]
+      @tasks[id]
+    else
+      {'id' => id, 'name' => "Task ##{id}"}
+    end
+  end
+  
+  def resolve_conversation(id)
+    if @conversations[id]
+      conversations[id]
+    else
+      {'id' => id, 'name' => "Conversation ##{id}"}
+    end
+  end
+  
   # Checks for highest or lowest sum
   # returns [user, value, example_line]
   def sum_compete(map_type, sum_type, check_high, &block)
@@ -411,6 +432,7 @@ EOT
     @reports.sums[map_type].each do |k,v|
       the_sum = v[sum_type]
       value = block.call(k,the_sum)
+      next if value == 0
       
       if (check_high and value > winner[1]) or (!check_high and (winner[1].nil? or value < winner[1]))
         winner[0] = k
@@ -457,7 +479,11 @@ EOT
     @reports.sum :users, :line_length do |activity|
       if activity.body
         lines = activity.body.split("\n")
-        (lines.map(&:length).inject{|r,e| r + e} || 0) / lines.length.to_f
+        unless lines.empty?
+          (lines.map(&:length).inject{|r,e| r + e} || 0) / lines.length.to_f
+        else
+          nil
+        end
       else
         nil
       end
@@ -584,6 +610,25 @@ end
 module Teambox
   include HTTParty
   base_uri "teambox.com/api/1"
+  
+  API_LIMIT=25
+  
+  # Util to grab a lot of items in separate requests
+  def self.grab_list(url, max, options={})
+    count = 0
+    query = (options[:query]||{}).merge({:count => [API_LIMIT,max].min})
+    items = []
+    while count < max
+      list = get(url, options.merge(:query => query)).map{|l|l}
+      items << list
+      count += list.length
+      break if list.length == 0
+      query['max_id'] = list[-1]['id']
+    end
+    
+    puts "Grabbed #{items.flatten.length} items from #{url} in #{items.length} requests."
+    items.flatten
+  end
 end
 
 OPTIONS = {
@@ -605,7 +650,7 @@ def load_activities
   if OPTIONS[:activities_file]
     JSON.parse(File.open(OPTIONS[:activities_file]){|f| f.read})
   else
-    Teambox.get("/projects/#{OPTIONS[:project_id]}/activities?count=#{OPTIONS[:limit]}", :basic_auth => OPTIONS[:auth]).map{|i|i}.tap do |list|
+    Teambox.grab_list("/projects/#{OPTIONS[:project_id]}/activities", OPTIONS[:limit], :basic_auth => OPTIONS[:auth]).map{|i|i}.tap do |list|
       File.open('activities.json', 'w'){|f| f.write JSON.pretty_generate(list)} if OPTIONS[:dump]
     end
   end.reverse.map{|a| Activity.new(a)}  # i.e. old -> new
@@ -616,7 +661,7 @@ def load_tasks
   if OPTIONS[:tasks_file]
     JSON.parse(File.open(OPTIONS[:tasks_file]){|f| f.read})
   else
-    Teambox.get("/projects/#{OPTIONS[:project_id]}/tasks?count=1000", :basic_auth => OPTIONS[:auth]).map{|i|i}.tap do |list|
+    Teambox.grab_list("/projects/#{OPTIONS[:project_id]}/tasks", 1000, :basic_auth => OPTIONS[:auth]).map{|i|i}.tap do |list|
       File.open('tasks.json', 'w'){|f| f.write JSON.pretty_generate(list)} if OPTIONS[:dump]
     end
   end.each{|c| tasks[c['id']] = c}
@@ -628,7 +673,7 @@ def load_conversations
   if OPTIONS[:conversations_file]
     JSON.parse(File.open(OPTIONS[:conversations_file]){|f| f.read})
   else
-    Teambox.get("/projects/#{OPTIONS[:project_id]}/conversations?count=200", :basic_auth => OPTIONS[:auth]).map{|i|i}.tap do |list|
+    Teambox.grab_list("/projects/#{OPTIONS[:project_id]}/conversations", 200, :basic_auth => OPTIONS[:auth]).map{|i|i}.tap do |list|
       File.open('conversations.json', 'w'){|f| f.write JSON.pretty_generate(list)} if OPTIONS[:dump]
     end
   end.each{|c| conversations[c['id']] = c}
@@ -654,9 +699,12 @@ def entry(project_name)
   report.title = "#{project_name} Report"
   report.tasks = load_tasks
   report.conversations = load_conversations
-  output = report.generate
   
+  puts "Generating report..."
+  output = report.generate
   File.open('out.html', 'w') {|f|f.write(output)}
+  
+  puts "DONE!"
 end
 
 OptionParser.new do |opts|
