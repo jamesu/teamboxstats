@@ -423,6 +423,31 @@ EOT
     end
   end
   
+  def render_runners_up(activities)
+    rowcount = 0
+    content = activities.map do |id|
+      name = @reports.maps[:users][id][0].user
+      "<td>#{name}</td>"
+    end
+    
+    str = []
+    content.each_index do |idx|
+      str << if idx % 5 == 0
+        "<tr>#{content[idx]}"
+      elsif idx % 5 == 4
+        "#{content[idx]}</tr>"
+      else
+        content[idx]
+      end
+    end
+    
+    if (content.length-1) % 5 != 4
+      str << "</tr>"
+    end
+    
+    "<table>#{str.join('')}</table>"
+  end
+  
   # Checks for highest or lowest sum
   # returns [user, value, example_line]
   def sum_compete(map_type, sum_type, check_high, &block)
