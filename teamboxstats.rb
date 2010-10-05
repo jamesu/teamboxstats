@@ -39,11 +39,7 @@ class Activity
   attr_accessor :clean_body
   attr_accessor :date
   attr_accessor :action
-  
-  # Comment target. Usually no target == Person invited, Task created, or Conversation created. 
-  # For create, Comments will be listed twice (once for create, the other for the actual comment)
-  attr_accessor :target_type
-  attr_accessor :target_id
+  attr_accessor :object
   
   NAME_SCAN = /@(\w+) /
   WORD_SCAN = /\w+/
@@ -51,22 +47,40 @@ class Activity
   QUESTION_SCAN = /\?/
   URL_SCAN = /(?:[a-z]+):\/\/[^ '"\)]+/
   
-  def initialize(data)
+  def initialize(data, references)
     @data = data
-    @type = data['target']['type'].to_sym
-    @user = data['user']['username']
+    @references = references
+    @ident = data['target_id']
+    @type = data['target_type'].to_sym
+    @user = @references["User#{@data['user_id']}"]
     @action = data['action'].to_sym
     
-    if data['target']
-      @body = data['target']['body']
+    @object = @references["#{@type}#{@ident}"]
+    if target
+      @body = @object['body']
       @clean_body = (@body || '').gsub(HTML_TAGS, '')
-      if data['target']['target_id']
-        @target_type = data['target']['target_type'].to_sym
-        @target_id = data['target']['target_id']
-      end
     end
     
     @date = Time.parse(data['created_at'])
+  end
+  
+  def username
+    @user['username']
+  end
+  
+  # Comment target. Usually no target == Person invited, Task created, or Conversation created. 
+  # For create, Comments will be listed twice (once for create, the other for the actual comment)
+  def target
+    type = target_type
+    type ? @references["#{target_type}#{target_id}"] : nil
+  end
+  
+  def target_type
+    @object['target_type'] ? @object['target_type'].to_sym : nil
+  end
+  
+  def target_id
+    @object['target_id']
   end
   
   def mentions
@@ -74,7 +88,7 @@ class Activity
   end
   
   def words
-    @clean_body.scan(WORD_SCAN)
+    (@clean_body || "").scan(WORD_SCAN)
   end
   
   def urls
@@ -266,7 +280,7 @@ BASE_TEMPLATE = <<EOT
         %tr
           %th.rankc= idx
           %td.user
-            %img{:src => @reports.maps[:users][@sorted_nick_activity[idx]][0].data['user']['avatar_url']}/
+            %img{:src => @reports.maps[:users][@sorted_nick_activity[idx]][0].user['avatar_url']}/
             %strong= @sorted_nick_activity[idx]
           %td= data.length
           %td
@@ -332,7 +346,7 @@ BASE_TEMPLATE = <<EOT
             %td.rankc= idx+1
             %td= @sorted_words[idx]
             %td= entries.length
-            %td= entries[-1].user
+            %td= entries[-1].username
     - unless @sorted_refs.empty?
       %h2= "Most referenced user"
       %table
@@ -347,7 +361,7 @@ BASE_TEMPLATE = <<EOT
             %td.rankc= idx+1
             %td= @sorted_refs[idx]
             %td= entries.length
-            %td= entries[-1].user
+            %td= entries[-1].username
     - unless @sorted_urls.empty?
       %h2= "Most referenced URLs"
       %table
@@ -362,7 +376,7 @@ BASE_TEMPLATE = <<EOT
               %td.rankc= idx+1
               %td= @sorted_urls[idx]
               %td= entries.length
-              %td= entries[-1].user
+              %td= entries[-1].username
     %h2= "Other interesting numbers"
     %table.interest
       - if @sorted_conversations.length > 0
@@ -426,7 +440,7 @@ EOT
   def render_runners_up(activities)
     rowcount = 0
     content = activities.map do |id|
-      name = @reports.maps[:users][id][0].user
+      name = @reports.maps[:users][id][0].username
       "<td>#{name}</td>"
     end
     
@@ -480,8 +494,8 @@ EOT
     @reports.map(:tasks) { |activity| activity.target_type == :Task ? activity.target_id : nil }
     @reports.map(:conversations) { |activity| activity.target_type == :Conversation ? activity.target_id : nil }
     
-    @reports.map(:users) { |activity| activity.user }
-    @reports.map(:user_comments) { |activity| (activity.type == :Comment && !activity.body.nil?) ? activity.user : nil }
+    @reports.map(:users) { |activity| activity.username }
+    @reports.map(:user_comments) { |activity| (activity.type == :Comment && !activity.body.nil?) ? activity.username : nil }
     @reports.map(:hours) { |activity| activity.date.hour }
     
     @reports.map(:words) { |activity| activity.words }
@@ -533,7 +547,7 @@ EOT
     end
     
     @reports.sum :tasks, :potato do |activity|
-      (activity.data['target']['assigned_id'] != activity.data['target']['previous_assigned_id']) ? 1 : nil
+      (activity.object['assigned_id'] != activity.object['previous_assigned_id']) ? 1 : nil
     end
     
     @reports.sum :users, :created_tasks do |activity|
@@ -634,7 +648,7 @@ end
 
 module Teambox
   include HTTParty
-  base_uri "teambox.com/api/1"
+  base_uri "localhost:4006/api/1"
   
   API_LIMIT=25
   
@@ -653,6 +667,30 @@ module Teambox
     
     puts "Grabbed #{items.flatten.length} items from #{url} in #{items.length} requests."
     items.flatten
+  end
+  
+  # Util to grab a lot of items in separate requests, but which use
+  # {objects:[], references:[]} for the response.
+  def self.grab_list_with_refs(url, max, options={})
+    count = 0
+    query = (options[:query]||{}).merge({:count => [API_LIMIT,max].min})
+    items = []
+    references = {}
+    while count < max
+      data = get(url, options.merge(:query => query))
+      list = data['objects']
+      data['references'].each do |ref|
+        key = "#{ref['type']}#{ref['id']}"
+        references[key] ||= ref
+      end
+      items << list
+      count += list.length
+      break if list.length == 0
+      query['max_id'] = list[-1]['id']
+    end
+    
+    puts "Grabbed #{items.flatten.length} items with #{references.keys.length} references from #{url} in #{items.length} requests."
+    {'objects' => items.flatten, 'references' => references}
   end
 end
 
@@ -675,10 +713,10 @@ def load_activities
   if OPTIONS[:activities_file]
     JSON.parse(File.open(OPTIONS[:activities_file]){|f| f.read})
   else
-    Teambox.grab_list("/projects/#{OPTIONS[:project_id]}/activities", OPTIONS[:limit], :basic_auth => OPTIONS[:auth]).map{|i|i}.tap do |list|
+    Teambox.grab_list_with_refs("/projects/#{OPTIONS[:project_id]}/activities", OPTIONS[:limit], :basic_auth => OPTIONS[:auth]).tap do |list|
       File.open('activities.json', 'w'){|f| f.write JSON.pretty_generate(list)} if OPTIONS[:dump]
     end
-  end.reverse.map{|a| Activity.new(a)}  # i.e. old -> new
+  end
 end
 
 def load_tasks
@@ -686,10 +724,10 @@ def load_tasks
   if OPTIONS[:tasks_file]
     JSON.parse(File.open(OPTIONS[:tasks_file]){|f| f.read})
   else
-    Teambox.grab_list("/projects/#{OPTIONS[:project_id]}/tasks", 1000, :basic_auth => OPTIONS[:auth]).map{|i|i}.tap do |list|
+    Teambox.grab_list_with_refs("/projects/#{OPTIONS[:project_id]}/tasks", 1000, :basic_auth => OPTIONS[:auth]).tap do |list|
       File.open('tasks.json', 'w'){|f| f.write JSON.pretty_generate(list)} if OPTIONS[:dump]
     end
-  end.each{|c| tasks[c['id']] = c}
+  end['objects'].each{|c| tasks[c['id']] = c}
   tasks
 end
 
@@ -698,10 +736,10 @@ def load_conversations
   if OPTIONS[:conversations_file]
     JSON.parse(File.open(OPTIONS[:conversations_file]){|f| f.read})
   else
-    Teambox.grab_list("/projects/#{OPTIONS[:project_id]}/conversations", 200, :basic_auth => OPTIONS[:auth]).map{|i|i}.tap do |list|
+    Teambox.grab_list_with_refs("/projects/#{OPTIONS[:project_id]}/conversations", 200, :basic_auth => OPTIONS[:auth]).tap do |list|
       File.open('conversations.json', 'w'){|f| f.write JSON.pretty_generate(list)} if OPTIONS[:dump]
     end
-  end.each{|c| conversations[c['id']] = c}
+  end['objects'].each{|c| conversations[c['id']] = c}
   conversations
 end
 
@@ -720,10 +758,12 @@ def entry(project_name)
   end
   
   # Generate the report!
-  report = Report.new(load_activities)
-  report.title = "#{project_name} Report"
+  activities = load_activities
+  references = activities['references']
+  report = Report.new(activities['objects'].reverse.map{|a| Activity.new(a, references)})
   report.tasks = load_tasks
   report.conversations = load_conversations
+  report.title = "#{project_name} Report"
   
   puts "Generating report..."
   output = report.generate
