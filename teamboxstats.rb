@@ -648,7 +648,7 @@ end
 
 module Teambox
   include HTTParty
-  base_uri "localhost:4006/api/1"
+  base_uri "teambox.com/api/1"
   
   API_LIMIT=25
   
